@@ -73,7 +73,7 @@ fn main() {
     };
 
     let target_ip = Ipv4Addr::from_str(&args.target.unwrap_or(String::from("0.0.0.0"))).unwrap();
-    let host = Ipv4Addr::from_str(&args.host.expect("Host ip needed.ode")).expect("Invalid host IP address");
+    let host = Ipv4Addr::from_str(&args.host.expect("Host ip needed.")).expect("Invalid host IP address");
     let my_mac = interface.mac.expect("No MAC address found for the interface");
 
     println!("Targe: {:#?}", dest);
