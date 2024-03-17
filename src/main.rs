@@ -63,7 +63,7 @@ fn main() {
     }
     .unwrap();
 
-    let mut client = ArpClient::new().unwrap();
+    let mut client = ArpClient::new_with_iface_name(&interface.name).unwrap();
     let dest = match args.target {
         Some(ref u) => {
             let result = client.ip_to_mac(Ipv4Addr::from_str(&u).unwrap(), None);
