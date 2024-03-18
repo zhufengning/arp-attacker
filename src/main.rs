@@ -1,4 +1,5 @@
 use clap::Parser;
+use ipnet::Ipv4Net;
 use libarp::client::ArpClient;
 use pnet::packet::MutablePacket;
 use pnet::packet::Packet;
@@ -10,7 +11,9 @@ use pnet::{
     },
     util::MacAddr,
 };
+
 use std::process::exit;
+use std::time::Duration;
 use std::{net::Ipv4Addr, str::FromStr};
 
 fn get_default_interface() -> Option<NetworkInterface> {
@@ -37,6 +40,18 @@ fn list_interfaces() {
     all_interfaces.iter().for_each(|e| println!("{}", e.name));
 }
 
+fn scan_network(interface: &NetworkInterface, network: &str) {
+    let net: Ipv4Net = network.parse().unwrap();
+    let mut client = ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
+    for ip in net.hosts().collect::<Vec<Ipv4Addr>>() {
+        let mac = client.ip_to_mac(ip, Some(Duration::from_millis(200)));
+        if let Ok(mac) = mac {
+            println!("{} -> {}", ip, mac);
+        }
+    }
+
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
@@ -52,8 +67,13 @@ struct Args {
     #[arg(long)]
     get_default_interface: bool,
 
+    #[arg(long)]
+    scan: Option<String>,
+
     host: Option<String>,
 }
+
+
 
 fn main() {
     let args = Args::parse();
@@ -75,6 +95,13 @@ fn main() {
         None => get_default_interface(),
     }
     .expect("No proper interface found.");
+
+    if let Some(scan) = args.scan {
+        scan_network(&interface, &scan);
+        exit(0);
+    }
+
+
     let target_ip;
 
     let mut client = ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
