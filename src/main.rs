@@ -90,11 +90,11 @@ fn main() {
 
 
 
-    let interface = match args.interface {
+    let interface = match &args.interface {
         Some(u) => get_interface(&u),
         None => get_default_interface(),
     }
-    .expect("No proper interface found.");
+    .expect(&format!("No proper interface found. {:?}", args.interface));
 
     if let Some(scan) = args.scan {
         scan_network(&interface, &scan);
