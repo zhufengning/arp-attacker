@@ -42,14 +42,15 @@ fn list_interfaces() {
 
 fn scan_network(interface: &NetworkInterface, network: &str) {
     let net: Ipv4Net = network.parse().unwrap();
-    let mut client = ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
+    let mut client =
+        ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
+
     for ip in net.hosts().collect::<Vec<Ipv4Addr>>() {
-        let mac = client.ip_to_mac(ip, Some(Duration::from_millis(200)));
+        let mac = client.ip_to_mac(ip, Some(Duration::from_millis(300)));
         if let Ok(mac) = mac {
             println!("{} -> {}", ip, mac);
         }
     }
-
 }
 
 #[derive(Parser, Debug)]
@@ -73,8 +74,6 @@ struct Args {
     host: Option<String>,
 }
 
-
-
 fn main() {
     let args = Args::parse();
     if args.list {
@@ -88,8 +87,6 @@ fn main() {
         exit(0);
     }
 
-
-
     let interface = match &args.interface {
         Some(u) => get_interface(&u),
         None => get_default_interface(),
@@ -101,10 +98,10 @@ fn main() {
         exit(0);
     }
 
-
     let target_ip;
 
-    let mut client = ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
+    let mut client =
+        ArpClient::new_with_iface_name(&interface.name).expect("Failed to create ARP client.");
     let dest = match args.target {
         Some(ref u) => match MacAddr::from_str(&u) {
             Ok(mac) => {
@@ -122,8 +119,11 @@ fn main() {
         None => {
             target_ip = Ipv4Addr::BROADCAST;
             MacAddr::broadcast()
-        },
+        }
     };
+
+    println!("Dest mac: {}", dest);
+
     let gateway = Ipv4Addr::from_str(&args.host.expect("Fake gateway ip needed."))
         .expect("Invalid fake gateway IP address");
     let my_mac = interface
@@ -139,14 +139,20 @@ fn main() {
     };
 
     let mut ethernet_buffer = [0u8; 42];
-    let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer).expect("Failed to create ethernet packet.");;
+    let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer)
+        .expect("Failed to create ethernet packet.");
 
     ethernet_packet.set_destination(MacAddr::broadcast());
-    ethernet_packet.set_source(interface.mac.expect("No MAC address found for the interface"));
+    ethernet_packet.set_source(
+        interface
+            .mac
+            .expect("No MAC address found for the interface"),
+    );
     ethernet_packet.set_ethertype(EtherTypes::Arp);
 
     let mut arp_buffer = [0u8; 28];
-    let mut arp_packet = MutableArpPacket::new(&mut arp_buffer).expect("Failed to create ARP packet.");
+    let mut arp_packet =
+        MutableArpPacket::new(&mut arp_buffer).expect("Failed to create ARP packet.");
 
     arp_packet.set_hardware_type(ArpHardwareTypes::Ethernet);
     arp_packet.set_protocol_type(EtherTypes::Ipv4);
@@ -163,7 +169,8 @@ fn main() {
     loop {
         sender
             .send_to(ethernet_packet.packet(), None)
-            .expect("Failed to send packet.").unwrap();
+            .expect("Failed to send packet.")
+            .unwrap();
         println!("{:#?}", arp_packet);
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
